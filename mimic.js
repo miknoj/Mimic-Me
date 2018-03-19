@@ -74,7 +74,7 @@ function onReset() {
   $("#logs").html("");  // clear out previous log
 
   // TODO(optional): You can restart the game as well
-  // <your code here>
+  game.init();
 };
 
 // Add a callback to notify when camera access is allowed
@@ -92,6 +92,7 @@ detector.addEventListener("onWebcamConnectFailure", function() {
 detector.addEventListener("onStopSuccess", function() {
   log('#logs', "The detector reports stopped");
   $("#results").html("");
+  game.stop();
 });
 
 // Add a callback to notify when the detector is initialized and ready for running
@@ -102,7 +103,7 @@ detector.addEventListener("onInitializeSuccess", function() {
   $("#face_video").css("display", "none");
 
   // TODO(optional): Call a function to initialize the game, if needed
-  // <your code here>
+  game.init();
 });
 
 // Add a callback to receive the results from processing an image
@@ -133,7 +134,8 @@ detector.addEventListener("onImageResultsSuccess", function(faces, image, timest
     drawEmoji(canvas, image, faces[0]);
 
     // TODO: Call your function to run the game (define it first!)
-    // <your code here>
+    // Game only expects one face.
+    game.update(faces[0].emojis.dominantEmoji, timestamp);
   }
 });
 
@@ -147,15 +149,16 @@ function drawFeaturePoints(canvas, img, face) {
 
   // TODO: Set the stroke and/or fill style you want for each feature point marker
   // See: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D#Fill_and_stroke_styles
-  // <your code here>
+  ctx.strokeStyle = 'white';
   
   // Loop over each feature point in the face
   for (var id in face.featurePoints) {
     var featurePoint = face.featurePoints[id];
-
     // TODO: Draw feature point, e.g. as a circle using ctx.arc()
     // See: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/arc
-    // <your code here>
+    ctx.beginPath();
+    ctx.arc(featurePoint.x, featurePoint.y, 2, 0, 2 * Math.PI);
+    ctx.stroke();
   }
 }
 
@@ -165,12 +168,16 @@ function drawEmoji(canvas, img, face) {
   var ctx = canvas.getContext('2d');
 
   // TODO: Set the font and style you want for the emoji
-  // <your code here>
+  ctx.font = '40px Segoe UI Emoji'
   
   // TODO: Draw it using ctx.strokeText() or fillText()
   // See: https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/fillText
   // TIP: Pick a particular feature point as an anchor so that the emoji sticks to your face
-  // <your code here>
+  // The offset in which to draw the emoji.
+  offset = 50;
+  x = face.featurePoints[0].x;
+  y = face.featurePoints[1].y;
+  ctx.fillText(face.emojis.dominantEmoji, x-offset, y)
 }
 
 // TODO: Define any variables and functions to implement the Mimic Me! game mechanics
@@ -186,4 +193,84 @@ function drawEmoji(canvas, img, face) {
 // - Define an initialization/reset function, and call it from the "onInitializeSuccess" event handler above
 // - Define a game reset function (same as init?), and call it from the onReset() function above
 
-// <your code here>
+function getRandomEmoji(emojiArr) {
+  return emojiArr[Math.floor(Math.random() * emojiArr.length)];
+}
+
+function Game() {
+  var gameEmojis = [ 128528, 9786, 128515, 128521, 128535, 128561 ];
+  this.config = {
+    "MAXSCORE" : 1,
+    "GAME EMOJIS" : gameEmojis,
+    "HOLD DURATION": 1 // How long the player has to hold the expression for it to count.
+  }
+  this.targetEmoji = -1;
+  this.score = -1;
+  this.time = {};
+}
+
+Game.prototype.init = function() {
+  this.targetEmoji = getRandomEmoji(this.config["GAME EMOJIS"]);
+  this.score = 0;
+  setTargetEmoji(this.targetEmoji);
+  setScore(this.score, this.config["MAXSCORE"]);
+  resetTime(this)
+  log("#logs", "Game started.")
+}
+
+Game.prototype.stop = function() {
+  log("#logs", "Game stopped.")  
+}
+
+Game.prototype.update = function(dominantEmoji, timestamp) {
+  // TODO:
+  // - Add a condition where player has to hold the expression for X number of
+  //   seconds by using the timestamp. Assume single thread.
+  // - Figure out a better way to handle the win case.
+  emojiCode = toUnicode(dominantEmoji);
+  if (this.targetEmoji === emojiCode) {
+    
+    if (this.time["START"] === -1)
+      this.time["START"] = timestamp;
+    calcDuration(this, timestamp)
+    
+    if (overDuration(this)) {
+      this.score += 1
+      this.targetEmoji = getRandomEmoji(this.config["GAME EMOJIS"])
+      setTargetEmoji(this.targetEmoji);
+      setScore(this.score, this.config["MAXSCORE"]);
+      resetTime(this)
+    }
+  } else {
+    resetTime(this)
+  }
+
+  // Check for win case.
+  if (this.score >= this.config["MAXSCORE"]) {
+    // Just log it and restart the game for now.
+    log("#logs", "Winner winner!")
+    onStop()
+    swal({
+      title: "Congratulations! You won!",
+      type: "success"
+    });
+  }
+}
+
+// --- Time utility functions ---
+
+function calcDuration(game, timestamp) {
+  game.time["DURATION"] = timestamp - game.time["START"];
+}
+
+function overDuration(game) {
+  return game.time["DURATION"] > game.config["HOLD DURATION"];
+}
+
+function resetTime(game) {
+  game.time["START"] = -1;
+  game.time["DURATION"] = 0;
+}
+
+// Create an instance of the game.
+var game = new Game()
